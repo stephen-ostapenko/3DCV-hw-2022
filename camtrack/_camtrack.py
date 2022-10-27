@@ -281,14 +281,24 @@ class PointCloudBuilder:
         yield self.points
         yield self.colors
 
-    def add_points(self, ids: np.ndarray, points: np.ndarray) -> None:
+    def add_points(self, ids: np.ndarray, points: np.ndarray, recalc_positions: bool = True) -> None:
         ids = ids.reshape(-1, 1)
         points = points.reshape(-1, 3)
-        _, (idx_1, idx_2) = snp.intersect(self.ids.flatten(), ids.flatten(),
-                                          indices=True)
-        self.points[idx_1] = points[idx_2]
+        _, (idx_1, idx_2) = snp.intersect(self.ids.flatten(), ids.flatten(), indices=True)
+        if (recalc_positions):
+            self.points[idx_1] = points[idx_2]
+
         self._ids = np.vstack((self.ids, np.delete(ids, idx_2, axis=0)))
         self._points = np.vstack((self.points, np.delete(points, idx_2, axis=0)))
+        self._sort_data()
+
+    def remove_points(self, ids_to_remove: np.ndarray) -> None:
+        self._ids = np.delete(self.ids, ids_to_remove, axis = 0)
+        self._points = np.delete(self.points, ids_to_remove, axis = 0)
+
+        if (not (self.colors is None)):
+            self._colors = np.delete(self.colors, ids_to_remove, axis = 0)
+
         self._sort_data()
 
     def set_colors(self, colors: np.ndarray) -> None:
