@@ -52,17 +52,24 @@ class _CornerStorageBuilder:
 def _build_impl(frame_sequence: pims.FramesSequence,
                 builder: _CornerStorageBuilder) -> None:
     
-    MAX_CORNERS_CNT = 1000
-    QUALITY_LEVEL = 0.01
-    MIN_DISTANCE = 14
+    MAX_CORNERS_CNT = 5000
+    QUALITY_LEVEL = 0.05
+    MIN_DISTANCE = 7
     FEATURE_SIZE = 8
+    BLOCK_SIZE = 7
+
+    LK_WINDOW_SIZE = (15, 15)
+    LK_MAX_LEVEL = 4
+    LK_CRITERIA = (cv2.TERM_CRITERIA_COUNT | cv2.TERM_CRITERIA_EPS, 10, 0.01)
+    LK_MIN_EIG_THRESHOLD = 5 * 10 ** (-4)
 
     last_image = frame_sequence[0]
     features_pos = cv2.goodFeaturesToTrack(
         image = last_image,
         maxCorners = MAX_CORNERS_CNT,
         qualityLevel = QUALITY_LEVEL,
-        minDistance = MIN_DISTANCE
+        minDistance = MIN_DISTANCE,
+        blockSize = BLOCK_SIZE
     )
     corners = FrameCorners(
         ids = np.arange(0, len(features_pos)),
@@ -76,7 +83,11 @@ def _build_impl(frame_sequence: pims.FramesSequence,
             prevImg = np.uint8(last_image * 255),
             nextImg = np.uint8(next_image * 255),
             prevPts = corners.points,
-            nextPts = None
+            nextPts = None,
+            winSize = LK_WINDOW_SIZE,
+            maxLevel = LK_MAX_LEVEL,
+            criteria = LK_CRITERIA,
+            minEigThreshold = LK_MIN_EIG_THRESHOLD
         )
         corners.update_points_pos(features_pos)
 
@@ -96,6 +107,7 @@ def _build_impl(frame_sequence: pims.FramesSequence,
                 maxCorners = MAX_CORNERS_CNT - corners.cnt,
                 qualityLevel = QUALITY_LEVEL,
                 minDistance = MIN_DISTANCE,
+                blockSize = BLOCK_SIZE,
                 mask = mask
             )
 
