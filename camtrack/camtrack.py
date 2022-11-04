@@ -241,8 +241,9 @@ def calc_camera_positions(iteration: int,
 
     print("\n\nExtending point cloud")
 
-    for it in range(5):
-        print("Attempt #", it + 1)
+    EXTENDING_POINT_CLOUD_ITERATIONS = 5
+    for it in range(EXTENDING_POINT_CLOUD_ITERATIONS):
+        print("Attempt #", it + 1, sep = "")
 
         ids, points3d = random_update_point_cloud(frame_count, corner_storage, view_mats, intrinsic_mat)
         point_cloud_builder.add_points(ids, points3d, recalc_positions = False)
@@ -353,7 +354,7 @@ def track_and_calc_colors(camera_parameters: CameraParameters,
     if (known_view_1 is None or known_view_2 is None):
         raise NotImplementedError()
 
-    np.random.seed(824)
+    np.random.seed(4824)
 
     if (known_view_1[0] > known_view_2[0]):
         known_view_1, known_view_2 = known_view_2, known_view_1
