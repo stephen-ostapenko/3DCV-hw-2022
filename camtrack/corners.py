@@ -51,7 +51,7 @@ class _CornerStorageBuilder:
 
 def _build_impl(frame_sequence: pims.FramesSequence,
                 builder: _CornerStorageBuilder) -> None:
-    
+
     MAX_CORNERS_CNT = 5000
     QUALITY_LEVEL = 0.05
     MIN_DISTANCE = 7

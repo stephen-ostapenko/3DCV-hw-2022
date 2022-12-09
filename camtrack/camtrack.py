@@ -105,7 +105,12 @@ def triangulate_points_on_multiple_frames(frame_ids: np.ndarray,
             least_sq_system.append(fm[3] * corner_storage[frame].points[ind_of_point_in_corner_storage][1] - fm[1])
 
         least_sq_system = np.array(least_sq_system)
-        coordinates = sp.linalg.lstsq(least_sq_system[:, : 3], -least_sq_system[:, 3], lapack_driver = "gelsy", check_finite = False)[0]
+        coordinates = sp.linalg.lstsq(
+            least_sq_system[:, : 3],
+            -least_sq_system[:, 3],
+            lapack_driver = "gelsy",
+            check_finite = False
+        )[0]
 
         ids.append(pt)
         points3d.append(coordinates)
@@ -114,10 +119,10 @@ def triangulate_points_on_multiple_frames(frame_ids: np.ndarray,
 
 
 def get_new_points_for_frame_with_two_frames(frame: int, frame_1: int, frame_2: int,
-                                              corner_storage: CornerStorage,
-                                              view_mats: List[np.ndarray],
-                                              intrinsic_mat: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
-    
+                                             corner_storage: CornerStorage,
+                                             view_mats: List[np.ndarray],
+                                             intrinsic_mat: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+
     ids_1, points3d_1 = triangulate_points_on_two_frames(
         frame, frame_1,
         corner_storage,
@@ -292,20 +297,6 @@ def calc_camera_positions(iteration: int,
                 print(f"Failed to process frame #{frame}")
                 continue
 
-            '''
-            real_points = real_points[inliers]
-            proj_points = proj_points[inliers]
-
-            rvec, tvec = cv2.solvePnPRefineLM(
-                objectPoints = real_points,
-                imagePoints = proj_points,
-                cameraMatrix = intrinsic_mat,
-                distCoeffs = None,
-                rvec = rvec,
-                tvec = tvec
-            )
-            '''
-
             rotations[frame] = rvec
             translations[frame] = tvec
             view_mats[frame] = rodrigues_and_translation_to_view_mat3x4(rvec, tvec)
@@ -345,27 +336,108 @@ def calc_camera_positions(iteration: int,
             print(f"Point cloud size is {len(point_cloud_builder.ids)}\n")
 
 
+def find_good_frame_pair(frame_count: int,
+                         corner_storage: CornerStorage,
+                         intrinsic_mat: np.ndarray) -> Tuple[Tuple[int, Pose], Tuple[int, Pose]]:
+
+    print("Finding good frame pair")
+
+    step = 30
+    if (frame_count < 60):
+        step = 20
+    if (frame_count < 30):
+        step = 10
+    if (frame_count < 20):
+        step = 1
+
+    best = (None, None, None)
+    for frame_1 in range(frame_count):
+        print(f"Finding best pair for frame {frame_1}")
+
+        for frame_2 in range(min(frame_count, frame_1 + step), frame_count, step):
+            correspondences = build_correspondences(
+                corner_storage[frame_1],
+                corner_storage[frame_2]
+            )
+
+            if (correspondences.ids.size < 12):
+                continue
+
+            H, mask_homography = cv2.findHomography(
+                correspondences.points_1,
+                correspondences.points_2,
+                method = cv2.RANSAC,
+                ransacReprojThreshold = 1.0,
+                maxIters = 1000,
+                confidence = 0.999
+            )
+
+            E, mask_essential_mat = cv2.findEssentialMat(
+                correspondences.points_1,
+                correspondences.points_2,
+                intrinsic_mat,
+                method = cv2.RANSAC,
+                prob = 0.9999,
+                threshold = 1.0,
+                maxIters = 5000
+            )
+
+            ratio = mask_essential_mat.astype(int).sum() / mask_homography.astype(int).sum()
+            if (best[0] is None or best[0] < ratio):
+                best = (ratio, frame_1, frame_2)
+
+    _, frame_1, frame_2 = best
+
+    correspondences = build_correspondences(
+        corner_storage[frame_1],
+        corner_storage[frame_2],
+    )
+
+    E, _ = cv2.findEssentialMat(
+        correspondences.points_1,
+        correspondences.points_2,
+        intrinsic_mat,
+        method = cv2.RANSAC,
+        prob = 0.9999,
+        threshold = 1.0,
+        maxIters = 5000
+    )
+
+    _, R, t, _ = cv2.recoverPose(
+        E,
+        correspondences.points_1,
+        correspondences.points_2,
+        intrinsic_mat,
+    )
+
+    return (frame_1, Pose(r_mat = np.eye(3), t_vec = np.zeros(3))), (frame_2, Pose(r_mat = R.T, t_vec = R.T @ -t))
+
+
 def track_and_calc_colors(camera_parameters: CameraParameters,
                           corner_storage: CornerStorage,
                           frame_sequence_path: str,
                           known_view_1: Optional[Tuple[int, Pose]] = None,
                           known_view_2: Optional[Tuple[int, Pose]] = None) -> Tuple[List[Pose], PointCloud]:
 
-    if (known_view_1 is None or known_view_2 is None):
-        raise NotImplementedError()
+    rgb_sequence = frameseq.read_rgb_f32(frame_sequence_path)
+    intrinsic_mat = to_opencv_camera_mat3x3(
+        camera_parameters,
+        rgb_sequence[0].shape[0]
+    )
+    frame_count = len(corner_storage)
+    assert(frame_count == len(rgb_sequence))
+    print(f"Processing {frame_count} frames")
+
+    if known_view_1 is None or known_view_2 is None:
+        known_view_1, known_view_2 = find_good_frame_pair(frame_count, corner_storage, intrinsic_mat)
+
+    print(f"Using frames {known_view_1[0]} and {known_view_2[0]}")
 
     np.random.seed(4824)
 
     if (known_view_1[0] > known_view_2[0]):
         known_view_1, known_view_2 = known_view_2, known_view_1
 
-    rgb_sequence = frameseq.read_rgb_f32(frame_sequence_path)
-    intrinsic_mat = to_opencv_camera_mat3x3(
-        camera_parameters,
-        rgb_sequence[0].shape[0]
-    )
-
-    frame_count = len(corner_storage)
     frame_1 = known_view_1[0]
     frame_2 = known_view_2[0]
 
