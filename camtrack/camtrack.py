@@ -342,12 +342,8 @@ def find_good_frame_pair(frame_count: int,
 
     print("Finding good frame pair")
 
-    step = 30
-    if (frame_count < 60):
-        step = 20
-    if (frame_count < 30):
-        step = 10
-    if (frame_count < 20):
+    step = 10
+    if (frame_count <= 60):
         step = 1
 
     best = (None, None, None)
@@ -367,9 +363,9 @@ def find_good_frame_pair(frame_count: int,
                 correspondences.points_1,
                 correspondences.points_2,
                 method = cv2.RANSAC,
-                ransacReprojThreshold = 1.0,
                 maxIters = 1000,
-                confidence = 0.999
+                ransacReprojThreshold = 1.0,
+                confidence = 0.9999
             )
 
             E, mask_essential_mat = cv2.findEssentialMat(
@@ -377,14 +373,17 @@ def find_good_frame_pair(frame_count: int,
                 correspondences.points_2,
                 intrinsic_mat,
                 method = cv2.RANSAC,
-                prob = 0.9999,
+                maxIters = 1000,
                 threshold = 1.0,
-                maxIters = 5000
+                prob = 0.9999
             )
 
             ratio = mask_essential_mat.astype(int).sum() / mask_homography.astype(int).sum()
             if (best[0] is None or best[0] < ratio):
                 best = (ratio, frame_1, frame_2)
+
+    if (best[0] is None):
+        raise Exception("Error! Can't find good pair of frames")
 
     _, frame_1, frame_2 = best
 
@@ -398,9 +397,9 @@ def find_good_frame_pair(frame_count: int,
         correspondences.points_2,
         intrinsic_mat,
         method = cv2.RANSAC,
-        prob = 0.9999,
+        maxIters = 5000,
         threshold = 1.0,
-        maxIters = 5000
+        prob = 0.9999
     )
 
     _, R, t, _ = cv2.recoverPose(

@@ -55,8 +55,9 @@ def _build_impl(frame_sequence: pims.FramesSequence,
     MAX_CORNERS_CNT = 5000
     QUALITY_LEVEL = 0.05
     MIN_DISTANCE = 7
-    FEATURE_SIZE = 8
     BLOCK_SIZE = 7
+
+    FEATURE_SIZE = 8
 
     LK_WINDOW_SIZE = (15, 15)
     LK_MAX_LEVEL = 4
@@ -99,7 +100,7 @@ def _build_impl(frame_sequence: pims.FramesSequence,
         if (mask.size and corners.cnt):
             corners = filter_frame_corners(corners, mask)
 
-        if (MAX_CORNERS_CNT > corners.cnt):
+        if (corners.cnt < MAX_CORNERS_CNT):
             mask = build_mask_for_corners(next_image.shape, corners, MIN_DISTANCE)
 
             new_features = cv2.goodFeaturesToTrack(
