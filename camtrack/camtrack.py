@@ -337,8 +337,6 @@ def calc_camera_positions(iteration: int,
     print(f"\n\nRetriangulating points")
 
     retriangulate_frames = np.arange(0, frame_count, int(np.round(frame_count / 5)))
-    #retriangulate_frames = np.concatenate((retriangulate_frames, np.array([frame_1, frame_2])))
-    #retriangulate_frames = np.unique(retriangulate_frames)
 
     ids, points3d = triangulate_points_on_multiple_frames(retriangulate_frames, corner_storage, view_mats, intrinsic_mat)
     point_cloud_builder.add_points(ids, points3d, recalc_positions = True)
@@ -422,12 +420,9 @@ def calc_camera_positions(iteration: int,
 
 def find_good_frame_pair(frame_count: int,
                          corner_storage: CornerStorage,
-                         intrinsic_mat: np.ndarray,
-                         reproj_threshold: float) -> Tuple[Tuple[int, Pose], Tuple[int, Pose]]:
+                         intrinsic_mat: np.ndarray) -> Tuple[Tuple[int, Pose], Tuple[int, Pose]]:
 
     print("Finding good frame pair")
-
-    reproj_threshold = None
 
     step = 10
     if (frame_count <= 60):
@@ -448,8 +443,7 @@ def find_good_frame_pair(frame_count: int,
     def check_frame_pair_is_good_enough(frame_1: int,
                                         frame_2: int,
                                         corner_storage: CornerStorage,
-                                        intrinsic_mat: np.ndarray,
-                                        reproj_threshold: float):
+                                        intrinsic_mat: np.ndarray):
 
         correspondences = build_correspondences(corner_storage[frame_1], corner_storage[frame_2])
         if (correspondences.ids.size < 10):
@@ -515,7 +509,7 @@ def find_good_frame_pair(frame_count: int,
         print(f"Processing frame {frame_1}")
 
         for frame_2 in range(min(frame_count, frame_1 + step), frame_count, step):
-            res = check_frame_pair_is_good_enough(frame_1, frame_2, corner_storage, intrinsic_mat, reproj_threshold)
+            res = check_frame_pair_is_good_enough(frame_1, frame_2, corner_storage, intrinsic_mat)
 
             if (res is None):
                 continue
@@ -523,12 +517,6 @@ def find_good_frame_pair(frame_count: int,
             count.append(res[0])
             median_cos.append(res[1])
             frame_pairs.append((frame_1, frame_2, res[0], res[1]))
-
-            #cnt, median_cos = res
-            
-            #if (best[0] is None or best[0] < cnt):
-            #if (best is None or best[0] > median_cos):
-            #    best = (median_cos, cnt, frame_1, frame_2)
 
     count = np.array(sorted(count))
     median_cos = np.array(sorted(median_cos))
@@ -548,52 +536,10 @@ def find_good_frame_pair(frame_count: int,
     print(f"Found pair ({frame_1}, {frame_2}) with {best[1]} inliers and median angle {np.arccos(best[2]) / np.pi * 180} degrees")
 
     correspondences = build_correspondences(corner_storage[frame_1], corner_storage[frame_2])
-    E = None
 
     reproj_threshold = get_reproj_threshold(correspondences.ids.size)
 
     print(f"Reprojection threshold is {reproj_threshold}")
-
-    #raise Exception(f"ids size is {correspondences.ids.size} and reproj_threshold is {reproj_threshold}")
-
-    '''
-    for reproj_threshold in [3]: # np.linspace(1, 25, 73):
-        E, mask = cv2.findEssentialMat(
-            correspondences.points_1,
-            correspondences.points_2,
-            intrinsic_mat,
-            method = cv2.RANSAC,
-            maxIters = 10000,
-            threshold = reproj_threshold,
-            prob = 0.999999
-        )
-
-        if (mask.sum() / correspondences.ids.size >= 2 / 3):
-            print(f"Reprojection threshold is {reproj_threshold}")
-            break
-
-    for i in [1, 3, 5, 7, 12]:
-        E, mask = cv2.findEssentialMat(
-            correspondences.points_1,
-            correspondences.points_2,
-            intrinsic_mat,
-            method = cv2.RANSAC,
-            maxIters = 10000,
-            threshold = i,
-            prob = 0.999999
-        )
-        print(i, mask.sum(), mask.sum() / correspondences.ids.size, end = ' ')
-        _, R, t, mask = cv2.recoverPose(
-            E,
-            correspondences.points_1,
-            correspondences.points_2,
-            intrinsic_mat,
-        )
-        #print(np.unique(mask))
-        print(mask.sum() // 255, correspondences.ids.size)
-
-    assert(0)
-    '''
 
     E, mask = cv2.findEssentialMat(
         correspondences.points_1,
@@ -630,34 +576,8 @@ def track_and_calc_colors(camera_parameters: CameraParameters,
     assert(frame_count == len(rgb_sequence))
     print(f"Processing {frame_count} frames")
 
-    thr = None
-
-    if ("ironman_translation_fast" in frame_sequence_path):
-        thr = 7 # 12
-    
-    if ("room" in frame_sequence_path):
-        thr = 1
-
-    if ("bike_translation_slow" in frame_sequence_path):
-        thr = 1 # 12
-
-    if ("house_free_motion" in frame_sequence_path):
-        thr = 1 # 12
-
-    if ("soda_free_motion" in frame_sequence_path):
-        thr = 3 # 5
-
-    if ("fox_head_short" in frame_sequence_path):
-        thr = 1
-
-    if ("fox_head_full" in frame_sequence_path):
-        thr = 1
-
-    #print(frame_sequence_path, file = sys.stderr)
-    thr = float(thr)
-
     if known_view_1 is None or known_view_2 is None:
-        known_view_1, known_view_2 = find_good_frame_pair(frame_count, corner_storage, intrinsic_mat, thr)
+        known_view_1, known_view_2 = find_good_frame_pair(frame_count, corner_storage, intrinsic_mat)
 
     print(f"Using frames {known_view_1[0]} and {known_view_2[0]}")
 
