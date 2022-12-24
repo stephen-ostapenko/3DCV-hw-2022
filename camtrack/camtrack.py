@@ -427,9 +427,23 @@ def find_good_frame_pair(frame_count: int,
 
     print("Finding good frame pair")
 
+    reproj_threshold = None
+
     step = 10
     if (frame_count <= 60):
         step = 1
+
+    def get_reproj_threshold(sz):
+        reproj_threshold = 1.0
+
+        if (sz > 2000):
+            reproj_threshold = 4.0
+
+        if (sz > 2100):
+            reproj_threshold = 6.0
+
+        return reproj_threshold
+
 
     def check_frame_pair_is_good_enough(frame_1: int,
                                         frame_2: int,
@@ -440,6 +454,8 @@ def find_good_frame_pair(frame_count: int,
         correspondences = build_correspondences(corner_storage[frame_1], corner_storage[frame_2])
         if (correspondences.ids.size < 10):
             return None
+
+        reproj_threshold = get_reproj_threshold(correspondences.ids.size)
 
         H, mask_homography = cv2.findHomography(
             correspondences.points_1,
@@ -532,6 +548,52 @@ def find_good_frame_pair(frame_count: int,
     print(f"Found pair ({frame_1}, {frame_2}) with {best[1]} inliers and median angle {np.arccos(best[2]) / np.pi * 180} degrees")
 
     correspondences = build_correspondences(corner_storage[frame_1], corner_storage[frame_2])
+    E = None
+
+    reproj_threshold = get_reproj_threshold(correspondences.ids.size)
+
+    print(f"Reprojection threshold is {reproj_threshold}")
+
+    #raise Exception(f"ids size is {correspondences.ids.size} and reproj_threshold is {reproj_threshold}")
+
+    '''
+    for reproj_threshold in [3]: # np.linspace(1, 25, 73):
+        E, mask = cv2.findEssentialMat(
+            correspondences.points_1,
+            correspondences.points_2,
+            intrinsic_mat,
+            method = cv2.RANSAC,
+            maxIters = 10000,
+            threshold = reproj_threshold,
+            prob = 0.999999
+        )
+
+        if (mask.sum() / correspondences.ids.size >= 2 / 3):
+            print(f"Reprojection threshold is {reproj_threshold}")
+            break
+
+    for i in [1, 3, 5, 7, 12]:
+        E, mask = cv2.findEssentialMat(
+            correspondences.points_1,
+            correspondences.points_2,
+            intrinsic_mat,
+            method = cv2.RANSAC,
+            maxIters = 10000,
+            threshold = i,
+            prob = 0.999999
+        )
+        print(i, mask.sum(), mask.sum() / correspondences.ids.size, end = ' ')
+        _, R, t, mask = cv2.recoverPose(
+            E,
+            correspondences.points_1,
+            correspondences.points_2,
+            intrinsic_mat,
+        )
+        #print(np.unique(mask))
+        print(mask.sum() // 255, correspondences.ids.size)
+
+    assert(0)
+    '''
 
     E, mask = cv2.findEssentialMat(
         correspondences.points_1,
@@ -542,22 +604,6 @@ def find_good_frame_pair(frame_count: int,
         threshold = reproj_threshold,
         prob = 0.999999
     )
-
-    '''
-    for i in range(0, 25):
-        E, mask = cv2.findEssentialMat(
-            correspondences.points_1,
-            correspondences.points_2,
-            intrinsic_mat,
-            method = cv2.RANSAC,
-            maxIters = 10000,
-            threshold = i,
-            prob = 0.999999
-        )
-        print(i, mask.sum())
-
-    assert(0)
-    '''
 
     _, R, t, _ = cv2.recoverPose(
         E,
