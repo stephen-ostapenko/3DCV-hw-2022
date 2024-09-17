@@ -34,7 +34,7 @@ class FrameCorners:
     (np.searchsorted).
     """
 
-    __slots__ = ('_ids', '_points', '_sizes')
+    __slots__ = ('_ids', '_points', '_sizes', '_next_ind')
 
     def __init__(self, ids, points, sizes):
         """
@@ -50,6 +50,21 @@ class FrameCorners:
         self._ids = ids[sorting_idx].reshape(-1, 1)
         self._points = points[sorting_idx].reshape(-1, 2)
         self._sizes = sizes[sorting_idx].reshape(-1, 1)
+        self._next_ind = np.max(ids) + 1
+
+    def update_points_pos(self, new_points_pos):
+        self._points = new_points_pos
+
+    def add_points(self, new_points, features_size):
+        to_add_cnt = new_points.size // 2
+        new_points = new_points.reshape(-1, 2)
+        if (to_add_cnt == 0):
+            return
+
+        self._ids = np.concatenate((self._ids, np.array([np.arange(self._next_ind, self._next_ind + to_add_cnt)]).T))
+        self._points = np.concatenate((self._points, new_points))
+        self._sizes = np.concatenate((self._sizes, np.array([np.array([features_size] * to_add_cnt)]).T))
+        self._next_ind += to_add_cnt
 
     @property
     def ids(self):
@@ -62,6 +77,11 @@ class FrameCorners:
     @property
     def sizes(self):
         return self._sizes
+
+    @property
+    def cnt(self):
+        assert(len(self._ids) == len(self._points) and len(self._points) == len(self._sizes))
+        return len(self._points)
 
     def __iter__(self):
         yield self.ids
@@ -79,6 +99,17 @@ def filter_frame_corners(frame_corners: FrameCorners,
     :return: filtered corners.
     """
     return FrameCorners(*[field[mask] for field in frame_corners])
+
+
+def build_mask_for_corners(shape, corners, radius):
+    """
+    Mask for corners detecting
+    """
+    mask = np.ones(shape, dtype = np.uint8)
+    for p in corners.points:
+        cv2.circle(mask, _to_int_tuple(p), radius, 0, -1)
+
+    return mask
 
 
 def _to_int_tuple(point):
@@ -104,6 +135,11 @@ def draw(grayscale_image: np.ndarray, corners: FrameCorners) -> np.ndarray:
     :return: BGR image with drawn corners.
     """
     bgr = cv2.cvtColor(grayscale_image, cv2.COLOR_GRAY2BGR)
+
+    def get_visible_color(id):
+        col = _ColorGenerator()(id)
+        return (col[0], 255, col[2])
+
     colors = map(_ColorGenerator(), corners.ids)
     for color, point, block_size in zip(colors, corners.points, corners.sizes):
         point = _to_int_tuple(point)

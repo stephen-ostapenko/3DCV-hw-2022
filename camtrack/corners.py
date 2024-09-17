@@ -19,6 +19,9 @@ import pims
 
 from _corners import (
     FrameCorners,
+    filter_frame_corners,
+    build_mask_for_corners,
+    _to_int_tuple,
     CornerStorage,
     StorageImpl,
     dump,
@@ -48,17 +51,59 @@ class _CornerStorageBuilder:
 
 def _build_impl(frame_sequence: pims.FramesSequence,
                 builder: _CornerStorageBuilder) -> None:
-    # TODO
-    image_0 = frame_sequence[0]
+    
+    MAX_CORNERS_CNT = 1000
+    QUALITY_LEVEL = 0.01
+    MIN_DISTANCE = 14
+    FEATURE_SIZE = 8
+
+    last_image = frame_sequence[0]
+    features_pos = cv2.goodFeaturesToTrack(
+        image = last_image,
+        maxCorners = MAX_CORNERS_CNT,
+        qualityLevel = QUALITY_LEVEL,
+        minDistance = MIN_DISTANCE
+    )
     corners = FrameCorners(
-        np.array([0]),
-        np.array([[0, 0]]),
-        np.array([55])
+        ids = np.arange(0, len(features_pos)),
+        points = features_pos,
+        sizes = np.array([FEATURE_SIZE] * len(features_pos))
     )
     builder.set_corners_at_frame(0, corners)
-    for frame, image_1 in enumerate(frame_sequence[1:], 1):
-        builder.set_corners_at_frame(frame, corners)
-        image_0 = image_1
+
+    for index, next_image in enumerate(frame_sequence[1:], 1):
+        features_pos, mask, error = cv2.calcOpticalFlowPyrLK(
+            prevImg = np.uint8(last_image * 255),
+            nextImg = np.uint8(next_image * 255),
+            prevPts = corners.points,
+            nextPts = None
+        )
+        corners.update_points_pos(features_pos)
+
+        if (mask is None):
+            mask = np.array([])
+        else:
+            mask = (mask == 1).flatten()
+
+        if (mask.size and corners.cnt):
+            corners = filter_frame_corners(corners, mask)
+
+        if (MAX_CORNERS_CNT > corners.cnt):
+            mask = build_mask_for_corners(next_image.shape, corners, MIN_DISTANCE)
+
+            new_features = cv2.goodFeaturesToTrack(
+                image = next_image,
+                maxCorners = MAX_CORNERS_CNT - corners.cnt,
+                qualityLevel = QUALITY_LEVEL,
+                minDistance = MIN_DISTANCE,
+                mask = mask
+            )
+
+            if (not (new_features is None)):
+                corners.add_points(new_features, FEATURE_SIZE)
+
+        builder.set_corners_at_frame(index, corners)
+        last_image = next_image
 
 
 def build(frame_sequence: pims.FramesSequence,
